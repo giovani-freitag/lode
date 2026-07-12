@@ -48,7 +48,7 @@ jobs:
         if: ${{ env.WINGET_TOKEN != '' }}
         uses: vedantmgoyal9/winget-releaser@v2
         with:
-          identifier: GiovaniFreitag.Lode
+          identifier: GiovaniFreitag.lode
           installers-regex: 'lode-x86_64-pc-windows-msvc\.msi$'
           release-tag: ${{ env.TAG }}
           version: ${{ steps.ver.outputs.version }}

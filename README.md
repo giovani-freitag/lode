@@ -65,7 +65,7 @@ cargo binstall --git https://github.com/giovani-freitag/lode lode
 On Windows you can also use a package manager:
 
 ```powershell
-winget install GiovaniFreitag.Lode
+winget install GiovaniFreitag.lode
 scoop bucket add lode https://github.com/giovani-freitag/scoop-lode; scoop install lode
 ```
 
