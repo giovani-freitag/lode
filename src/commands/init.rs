@@ -53,7 +53,11 @@ pub fn run(args: InitArgs) -> Result<()> {
                 .cloned()
                 .ok_or_else(|| anyhow_empty("Minecraft"))?;
             if interactive {
-                let mut picker = cliclack::select("Minecraft version");
+                // Long list (all releases + snapshots): cap the viewport and let the user
+                // type to filter (e.g. "1.20.1") instead of scrolling hundreds of rows.
+                let mut picker = cliclack::select("Minecraft version")
+                    .filter_mode()
+                    .max_rows(10);
                 for v in &mcs {
                     picker = picker.item(v.clone(), v, "");
                 }
@@ -79,7 +83,9 @@ pub fn run(args: InitArgs) -> Result<()> {
                 );
             }
             if interactive {
-                let mut picker = cliclack::select(format!("{} version", label_of(loader)));
+                let mut picker = cliclack::select(format!("{} version", label_of(loader)))
+                    .filter_mode()
+                    .max_rows(10);
                 for v in &lvs {
                     let label = match &v.note {
                         Some(note) => format!("{} ({note})", v.version),
