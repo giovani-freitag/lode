@@ -7,6 +7,7 @@ Require lode
 
 Set Shell bash
 Set FontSize 18
+Set FontFamily "DejaVu Sans Mono"
 Set Width 1200
 Set Height 800
 Set Padding 24
@@ -17,7 +18,7 @@ Set Theme { "name": "lode", "background": "#1E1E1E", "foreground": "#D4D4D4", "c
 
 # An amber prompt (the brand color), configured off-camera.
 Hide
-Type `export PS1=$'\[\e[38;2;251;190;60m\]❯ \[\e[0m\]'`
+Type `export PS1=$'\[\e[38;2;251;190;60m\]» \[\e[0m\]'`
 Enter
 Type "clear"
 Enter
