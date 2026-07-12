@@ -1,0 +1,37 @@
+name: Demo GIF
+
+# Renders demo.tape into assets/demo.gif and opens a PR with the result. Manual — run it after
+# changing the CLI's output or demo.tape. Runs on Linux because VHS needs ttyd + ffmpeg, which
+# don't run on Windows. (Standard VHS-in-CI pattern.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Build from source so the GIF reflects the current CLI, not the last release.
+      - name: Build lode
+        run: cargo build --release
+      - name: Put lode on PATH
+        run: echo "${{ github.workspace }}/target/release" >> "$GITHUB_PATH"
+      - name: Render demo.tape
+        uses: charmbracelet/vhs-action@v2
+        with:
+          path: demo.tape
+      - name: Open a PR with the regenerated GIF
+        uses: peter-evans/create-pull-request@v6
+        with:
+          add-paths: assets/demo.gif
+          branch: update-demo-gif
+          delete-branch: true
+          commit-message: "docs: regenerate demo gif"
+          title: "docs: regenerate demo gif"
+          body: Auto-rendered from `demo.tape` by the Demo GIF workflow.
