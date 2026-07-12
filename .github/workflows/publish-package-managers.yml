@@ -23,8 +23,11 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
+# This reusable publish-job authenticates with PATs (WINGET_TOKEN / SCOOP_BUCKET_TOKEN) and reads
+# public assets token-free, so it needs no GITHUB_TOKEN scopes. dist calls it with only id-token +
+# packages granted (contents defaults to none); requesting `contents` here would fail the run at
+# startup with a permissions conflict, so declare the empty set and stay inside that envelope.
+permissions: {}
 
 jobs:
   # Opens a PR to microsoft/winget-pkgs with the release's .msi. The package identifier must
@@ -60,7 +63,6 @@ jobs:
       # owner/repo of the Scoop bucket to update — the maintainer creates this repo.
       BUCKET_REPO: giovani-freitag/scoop-lode
     steps:
-      - uses: actions/checkout@v6
       - name: Update Scoop bucket
         if: ${{ env.SCOOP_BUCKET_TOKEN != '' }}
         env:
@@ -75,13 +77,18 @@ jobs:
           curl --proto '=https' --tlsv1.2 -LsSf -o "$ZIP" "$URL"
           HASH=$(sha256sum "$ZIP" | cut -d' ' -f1)
 
+          # Fetch the manifest template at the release tag — public repo, so no token is needed and
+          # the job stays within the contents:none envelope dist grants (no checkout required).
+          curl --proto '=https' --tlsv1.2 -LsSf -o template.json \
+            "https://raw.githubusercontent.com/${REPO}/${TAG}/packaging/scoop/lode.json"
+
           git clone "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/${BUCKET_REPO}.git" bucket
           mkdir -p bucket/bucket
           jq --arg v "$VERSION" --arg url "$URL" --arg hash "$HASH" \
             '.version = $v
              | .architecture."64bit".url = $url
              | .architecture."64bit".hash = $hash' \
-            packaging/scoop/lode.json > bucket/bucket/lode.json
+            template.json > bucket/bucket/lode.json
 
           cd bucket
           git config user.name "github-actions[bot]"
