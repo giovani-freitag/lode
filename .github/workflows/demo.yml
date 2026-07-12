@@ -22,6 +22,9 @@ jobs:
         run: cargo build --release
       - name: Put lode on PATH
         run: echo "${{ github.workspace }}/target/release" >> "$GITHUB_PATH"
+      # Refresh the apt cache first — vhs-action installs ffmpeg via apt, which 404s on a stale cache.
+      - name: Refresh apt package lists
+        run: sudo apt-get update
       - name: Render demo.tape
         uses: charmbracelet/vhs-action@v2
         with:
