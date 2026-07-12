@@ -45,9 +45,7 @@ pub fn run(args: InitArgs) -> Result<()> {
     let minecraft = match args.minecraft {
         Some(m) => m,
         None => {
-            let mcs = crate::ui::spin("Fetching Minecraft versions", "Minecraft versions", || {
-                versions.minecraft()
-            })?;
+            let mcs = versions.minecraft()?;
             let first = mcs
                 .first()
                 .cloned()
@@ -71,11 +69,7 @@ pub fn run(args: InitArgs) -> Result<()> {
     let loader_version = match args.loader_version {
         Some(v) => v,
         None => {
-            let lvs = crate::ui::spin(
-                &format!("Fetching {} versions", label_of(loader)),
-                &format!("{} versions", label_of(loader)),
-                || versions.loader(loader, &minecraft),
-            )?;
+            let lvs = versions.loader(loader, &minecraft)?;
             if lvs.is_empty() {
                 bail!(
                     "no {} versions found for Minecraft {minecraft}",
