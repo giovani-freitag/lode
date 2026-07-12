@@ -34,7 +34,9 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     let mode = ResolveMode::Update {
         only: args.name.clone(),
     };
-    let lock = resolve::resolve(&manifest, previous.as_ref(), mode, &paths.root)?;
+    let lock = crate::ui::spin("Resolving dependencies", "Dependencies resolved", || {
+        resolve::resolve(&manifest, previous.as_ref(), mode, &paths.root)
+    })?;
     lock.save(&paths.lock())?;
 
     let mut changed = 0;

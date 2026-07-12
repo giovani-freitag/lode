@@ -14,5 +14,6 @@ pub mod providers;
 pub mod provision;
 pub mod resolve;
 pub mod side;
+pub mod ui;
 pub mod version_req;
 pub mod versions;

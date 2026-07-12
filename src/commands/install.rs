@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -39,12 +40,14 @@ pub fn run(args: InstallArgs) -> Result<()> {
         previous.unwrap()
     } else {
         println!("Lockfile missing or stale — resolving.");
-        let lock = resolve::resolve(
-            &manifest,
-            previous.as_ref(),
-            resolve::ResolveMode::Locked,
-            &paths.root,
-        )?;
+        let lock = crate::ui::spin("Resolving dependencies", "Dependencies resolved", || {
+            resolve::resolve(
+                &manifest,
+                previous.as_ref(),
+                resolve::ResolveMode::Locked,
+                &paths.root,
+            )
+        })?;
         lock.save(&paths.lock())?;
         lock
     };
@@ -109,10 +112,21 @@ pub fn install_pack(
     // report together, mirroring how manual/needs_key already degrade gracefully.
     let mut failures: Vec<ModFailure> = Vec::new();
 
+    // A per-mod spinner gives live download feedback in a terminal; when stderr is piped/redirected
+    // it stays `None` and the original plain lines are printed instead, so captured output is
+    // unchanged. Every branch below stops or errors the spinner so one is never left dangling.
+    let spinners = std::io::stderr().is_terminal();
+
     for m in &lock.mods {
         if !side_wanted(m.side, opts.server) {
             continue;
         }
+
+        let spinner = spinners.then(|| {
+            let sp = cliclack::spinner();
+            sp.start(format!("Downloading {}", m.slug));
+            sp
+        });
 
         let outcome = install_one(
             m,
@@ -125,19 +139,46 @@ pub fn install_pack(
         match outcome {
             Ok(Outcome::Installed) => {
                 installed += 1;
-                println!("  + {} ({})", m.filename, m.slug);
+                match &spinner {
+                    Some(sp) => sp.stop(format!("+ {} ({})", m.filename, m.slug)),
+                    None => println!("  + {} ({})", m.filename, m.slug),
+                }
             }
             Ok(Outcome::InstalledLocal) => {
                 installed += 1;
-                println!("  + {} ({}) [local]", m.filename, m.slug);
+                match &spinner {
+                    Some(sp) => sp.stop(format!("+ {} ({}) [local]", m.filename, m.slug)),
+                    None => println!("  + {} ({}) [local]", m.filename, m.slug),
+                }
             }
-            Ok(Outcome::UpToDate) => up_to_date += 1,
-            Ok(Outcome::Manual(md)) => manual.push(md),
-            Ok(Outcome::NeedsKey(entry)) => needs_key.push(entry),
+            Ok(Outcome::UpToDate) => {
+                up_to_date += 1;
+                if let Some(sp) = &spinner {
+                    sp.stop(format!("{} ({}) up to date", m.filename, m.slug));
+                }
+            }
+            Ok(Outcome::Manual(md)) => {
+                if let Some(sp) = &spinner {
+                    sp.cancel(format!(
+                        "{} ({}) needs a manual download",
+                        md.name, md.filename
+                    ));
+                }
+                manual.push(md);
+            }
+            Ok(Outcome::NeedsKey(entry)) => {
+                if let Some(sp) = &spinner {
+                    sp.cancel(format!("{entry} needs a CurseForge key"));
+                }
+                needs_key.push(entry);
+            }
             Err(err) => {
                 // Keep a mismatch (and any hard error) loud, but attribute it to this mod and press
                 // on so the caller still learns everything that did — and didn't — install.
-                eprintln!("  x {} ({}) — {err:#}", m.name, m.filename);
+                match &spinner {
+                    Some(sp) => sp.error(format!("{} ({}) — {err:#}", m.name, m.filename)),
+                    None => eprintln!("  x {} ({}) — {err:#}", m.name, m.filename),
+                }
                 failures.push(ModFailure {
                     name: m.name.clone(),
                     filename: m.filename.clone(),

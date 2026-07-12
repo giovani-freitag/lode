@@ -49,12 +49,14 @@ pub(crate) fn parse_loader(s: &str) -> Result<Loader> {
 /// and refresh.
 pub(crate) fn resolve_and_save(paths: &PackPaths, manifest: &Manifest) -> Result<Lock> {
     let previous = Lock::load(&paths.lock()).ok();
-    let lock = resolve::resolve(
-        manifest,
-        previous.as_ref(),
-        resolve::ResolveMode::Locked,
-        &paths.root,
-    )?;
+    let lock = crate::ui::spin("Resolving dependencies", "Dependencies resolved", || {
+        resolve::resolve(
+            manifest,
+            previous.as_ref(),
+            resolve::ResolveMode::Locked,
+            &paths.root,
+        )
+    })?;
     lock.save(&paths.lock())?;
     Ok(lock)
 }

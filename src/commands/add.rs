@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
-use dialoguer::Select;
 
 use super::{count_kinds, parse_side, resolve_and_save};
 use crate::cli::AddArgs;
@@ -172,24 +171,24 @@ fn resolve_slug(
         return Ok(slug);
     }
 
-    let hits = modrinth.search(query, manifest.loader.name, &manifest.loader.minecraft)?;
+    let hits = crate::ui::spin("Searching Modrinth", "Search complete", || {
+        modrinth.search(query, manifest.loader.name, &manifest.loader.minecraft)
+    })?;
     if hits.is_empty() {
         bail!("no Modrinth project matches '{query}' for this loader/MC version");
     }
-    if yes || hits.len() == 1 {
+    // A single hit, `--yes`, or a non-interactive stream can't disambiguate — take the top hit.
+    if !crate::ui::is_interactive(yes) || hits.len() == 1 {
         return Ok(hits[0].slug.clone());
     }
 
-    let labels: Vec<String> = hits
-        .iter()
-        .map(|h| format!("{} — {}", h.title, truncate(&h.description, 60)))
-        .collect();
-    let choice = Select::new()
-        .with_prompt("Select a mod")
-        .items(&labels)
-        .default(0)
-        .interact()?;
-    Ok(hits[choice].slug.clone())
+    let mut picker = cliclack::select("Select a mod");
+    for h in &hits {
+        let label = format!("{} — {}", h.title, truncate(&h.description, 60));
+        picker = picker.item(h.slug.clone(), label, "");
+    }
+    let slug: String = picker.interact()?;
+    Ok(slug)
 }
 
 fn truncate(s: &str, max: usize) -> String {

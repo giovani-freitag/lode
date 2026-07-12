@@ -1,7 +1,6 @@
 use std::env;
 
 use anyhow::{bail, Result};
-use dialoguer::{Input, Select};
 
 use super::parse_loader;
 use crate::cli::InitArgs;
@@ -17,7 +16,10 @@ pub fn run(args: InitArgs) -> Result<()> {
         bail!("{MANIFEST_FILENAME} already exists here");
     }
 
-    let interactive = !args.yes;
+    let interactive = crate::ui::is_interactive(args.yes);
+    if interactive {
+        cliclack::intro("lode · new pack")?;
+    }
     let versions = Versions::new()?;
 
     let default_name = dir.file_name().map(|s| s.to_string_lossy().into_owned());
@@ -43,18 +45,19 @@ pub fn run(args: InitArgs) -> Result<()> {
     let minecraft = match args.minecraft {
         Some(m) => m,
         None => {
-            let mcs = versions.minecraft()?;
+            let mcs = crate::ui::spin("Fetching Minecraft versions", "Minecraft versions", || {
+                versions.minecraft()
+            })?;
             let first = mcs
                 .first()
                 .cloned()
                 .ok_or_else(|| anyhow_empty("Minecraft"))?;
             if interactive {
-                let idx = Select::new()
-                    .with_prompt("Minecraft version")
-                    .items(&mcs)
-                    .default(0)
-                    .interact()?;
-                mcs[idx].clone()
+                let mut picker = cliclack::select("Minecraft version");
+                for v in &mcs {
+                    picker = picker.item(v.clone(), v, "");
+                }
+                picker.interact()?
             } else {
                 first
             }
@@ -64,7 +67,11 @@ pub fn run(args: InitArgs) -> Result<()> {
     let loader_version = match args.loader_version {
         Some(v) => v,
         None => {
-            let lvs = versions.loader(loader, &minecraft)?;
+            let lvs = crate::ui::spin(
+                &format!("Fetching {} versions", label_of(loader)),
+                &format!("{} versions", label_of(loader)),
+                || versions.loader(loader, &minecraft),
+            )?;
             if lvs.is_empty() {
                 bail!(
                     "no {} versions found for Minecraft {minecraft}",
@@ -72,19 +79,15 @@ pub fn run(args: InitArgs) -> Result<()> {
                 );
             }
             if interactive {
-                let labels: Vec<String> = lvs
-                    .iter()
-                    .map(|v| match &v.note {
+                let mut picker = cliclack::select(format!("{} version", label_of(loader)));
+                for v in &lvs {
+                    let label = match &v.note {
                         Some(note) => format!("{} ({note})", v.version),
                         None => v.version.clone(),
-                    })
-                    .collect();
-                let idx = Select::new()
-                    .with_prompt(format!("{} version", label_of(loader)))
-                    .items(&labels)
-                    .default(0)
-                    .interact()?;
-                lvs[idx].version.clone()
+                    };
+                    picker = picker.item(v.version.clone(), label, "");
+                }
+                picker.interact()?
             } else {
                 lvs[0].version.clone()
             }
@@ -109,47 +112,50 @@ pub fn run(args: InitArgs) -> Result<()> {
     };
     manifest.save(&manifest_path)?;
 
-    println!("Created {}", manifest_path.display());
-    println!(
-        "  {} {} · Minecraft {}",
+    let summary = format!(
+        "{} {} · Minecraft {}",
         label_of(loader),
         manifest.loader.version,
         manifest.loader.minecraft
     );
-    println!();
-    println!("Next steps:");
-    println!("  lode add <mod>    add a mod — resolves deps, downloads the jars");
-    println!("  lode install      set up an instance from the lockfile");
-    println!("  lode list         show the resolved pack");
-    println!();
-    println!("Docs: https://github.com/giovani-freitag/lode");
+    let next_steps = "lode add <mod>    add a mod — resolves deps, downloads the jars\n\
+         lode install      set up an instance from the lockfile\n\
+         lode list         show the resolved pack";
+    if interactive {
+        cliclack::log::success(format!("Created {}", manifest_path.display()))?;
+        cliclack::log::info(summary)?;
+        cliclack::note("Next steps", next_steps)?;
+        cliclack::outro("Docs: https://github.com/giovani-freitag/lode")?;
+    } else {
+        println!("Created {}", manifest_path.display());
+        println!("  {summary}");
+        println!();
+        println!("Next steps:");
+        println!("  lode add <mod>    add a mod — resolves deps, downloads the jars");
+        println!("  lode install      set up an instance from the lockfile");
+        println!("  lode list         show the resolved pack");
+        println!();
+        println!("Docs: https://github.com/giovani-freitag/lode");
+    }
     Ok(())
 }
 
 fn pick_loader() -> Result<Loader> {
-    let options = [
-        Loader::Fabric,
-        Loader::Neoforge,
-        Loader::Forge,
-        Loader::Quilt,
-    ];
-    let labels: Vec<&str> = options.iter().map(|l| label_of(*l)).collect();
-    let idx = Select::new()
-        .with_prompt("Loader")
-        .items(&labels)
-        .default(0)
+    let loader = cliclack::select("Loader")
+        .item(Loader::Fabric, label_of(Loader::Fabric), "")
+        .item(Loader::Neoforge, label_of(Loader::Neoforge), "")
+        .item(Loader::Forge, label_of(Loader::Forge), "")
+        .item(Loader::Quilt, label_of(Loader::Quilt), "")
         .interact()?;
-    Ok(options[idx])
+    Ok(loader)
 }
 
 fn prompt_text(prompt: &str, default: Option<String>) -> Result<String> {
-    let value = match default {
-        Some(d) => Input::<String>::new()
-            .with_prompt(prompt)
-            .default(d)
-            .interact_text()?,
-        None => Input::<String>::new().with_prompt(prompt).interact_text()?,
-    };
+    let mut input = cliclack::input(prompt);
+    if let Some(d) = &default {
+        input = input.default_input(d);
+    }
+    let value: String = input.interact()?;
     Ok(value)
 }
 
