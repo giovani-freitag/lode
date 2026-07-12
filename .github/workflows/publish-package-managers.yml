@@ -60,7 +60,7 @@ jobs:
       # owner/repo of the Scoop bucket to update — the maintainer creates this repo.
       BUCKET_REPO: giovani-freitag/scoop-lode
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Update Scoop bucket
         if: ${{ env.SCOOP_BUCKET_TOKEN != '' }}
         env:
