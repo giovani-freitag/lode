@@ -1,0 +1,26 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# Trigger the release build via workflow_dispatch instead of tag-push, so release-please can
+# kick it off with the default GITHUB_TOKEN (tag pushes by that token don't trigger workflows).
+dispatch-releases = true
+# release-please already creates the GitHub Release; dist only uploads its artifacts onto it.
+create-release = false
+# The installers to generate for each app.
+# shell = curl|sh (Linux/macOS), powershell = irm|iex (Windows), msi = the Windows "next-next"
+# installer. Homebrew/npm are Phase 2 (they need a tap repo / npm token).
+installers = ["shell", "powershell", "msi"]
+# Winget + Scoop are published by a LOCAL reusable workflow that dist calls *inside* the release
+# run (see .github/workflows/publish-package-managers.yml). Running it as a dist publish-job — rather
+# than a separate workflow keyed on the `released` event — is what makes it fire at all: dist
+# undrafts the release with GITHUB_TOKEN, and GitHub suppresses event-triggered workflows for
+# GITHUB_TOKEN actions (anti-recursion), so a `release: released` trigger would never run.
+publish-jobs = ["./publish-package-managers"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]

@@ -1,0 +1,54 @@
+name: Refresh Trusted Root
+
+# Keep the vendored Sigstore trusted root (src/assets/sigstore-trusted-root.json) current. The
+# material (Fulcio CA + Rekor/CT keys) is long-lived and only changes when Sigstore rotates a key or
+# CA — a rare, announced event, not a fixed countdown. So we poll WEEKLY (cheap) and open a PR only
+# when it actually changes; if nothing changed, nothing happens. A human reviews before merging,
+# since it's `get --verify`'s trust material.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # 06:00 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Fetch the current Sigstore trusted root (proper TUF rotation via cosign)
+        run: |
+          cosign initialize
+          # cosign caches the TUF targets under ~/.sigstore; locate the trusted root robustly.
+          src=$(find "$HOME/.sigstore" -name 'trusted_root.json' 2>/dev/null | head -1)
+          if [ -z "$src" ]; then
+            echo "::error::could not locate trusted_root.json in the cosign TUF cache"
+            exit 1
+          fi
+          cp "$src" src/assets/sigstore-trusted-root.json
+      - name: Warn if any trust material expires soon
+        run: |
+          # Safety net: surface any validity window (a CA/key `end`) closing within 90 days, so a
+          # rotation never sneaks past us between weekly polls.
+          now=$(date +%s); soon=$(date -d "+90 days" +%s)
+          nearest=$(jq -r '[.. | .end? // empty] | .[]' src/assets/sigstore-trusted-root.json 2>/dev/null \
+            | while read -r ts; do date -d "$ts" +%s 2>/dev/null; done \
+            | awk -v n="$now" '$1>n' | sort -n | head -1)
+          if [ -n "$nearest" ] && [ "$nearest" -lt "$soon" ]; then
+            echo "::warning::Sigstore trust material has an entry expiring within 90 days ($(date -u -d @"$nearest"))"
+          fi
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          title: "chore: refresh vendored Sigstore trusted root"
+          commit-message: "chore: refresh vendored Sigstore trusted root"
+          body: |
+            Automated refresh of `src/assets/sigstore-trusted-root.json` from the Sigstore TUF repo.
+            Opened only because the material changed. Review the diff before merging — this is
+            `get --verify`'s trust material.
+          branch: chore/refresh-trusted-root
+          add-paths: src/assets/sigstore-trusted-root.json
+          delete-branch: true

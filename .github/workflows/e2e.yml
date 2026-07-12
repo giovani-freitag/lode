@@ -1,0 +1,64 @@
+name: E2E
+
+# Heavy end-to-end checks against real systems (Java, loader server installers, the Modrinth API).
+# Manual — it downloads loader servers over the network, so it isn't run on every push.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Provision a real server for each loader and assert the loader left its marker behind.
+  provisioning:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - loader: forge
+            mc: "1.20.1"
+            marker: libraries/net/minecraftforge/forge
+          - loader: neoforge
+            mc: "1.21.1"
+            marker: libraries/net/neoforged/neoforge
+          - loader: fabric
+            mc: "1.20.1"
+            marker: fabric-server-launch.jar
+          - loader: quilt
+            mc: "1.20.1"
+            marker: quilt-server-launch.jar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: cargo build --release
+      - name: Provision ${{ matrix.loader }} server
+        run: |
+          mkdir -p /tmp/pack && cd /tmp/pack
+          LODE="$GITHUB_WORKSPACE/target/release/lode"
+          "$LODE" init -y --name it --author ci --loader ${{ matrix.loader }} --minecraft ${{ matrix.mc }}
+          "$LODE" install --server
+      - name: Assert provisioned
+        run: test -e "/tmp/pack/${{ matrix.marker }}"
+
+  # A real Modrinth add + install (dependency resolution + jar download + verify).
+  modrinth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: add + install + why
+        run: |
+          mkdir -p /tmp/mr && cd /tmp/mr
+          LODE="$GITHUB_WORKSPACE/target/release/lode"
+          "$LODE" init -y --name it --author ci --loader fabric --minecraft 1.20.1 --loader-version 0.15.11
+          "$LODE" add indium -y
+          test -n "$(ls mods/*.jar 2>/dev/null)"
+          "$LODE" why sodium

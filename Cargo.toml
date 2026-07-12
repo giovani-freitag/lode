@@ -1,0 +1,64 @@
+[package]
+name = "lode"
+version = "0.0.1"
+authors = ["Giovani Freitag"]
+edition = "2021"
+description = "A package manager for Minecraft modpacks — centralized manifest, real dependency resolution, prebuilt binaries."
+license = "MIT"
+repository = "https://github.com/giovani-freitag/lode"
+rust-version = "1.74"
+
+[package.metadata.wix]
+upgrade-guid = "CCB8F657-3CED-404B-8A62-A2EEAB8C1C3A"
+path-guid = "9A2F486B-4D6A-4546-AE6E-4D9048DEBADE"
+license = false
+eula = false
+
+[[bin]]
+name = "lode"
+path = "src/main.rs"
+
+[lib]
+name = "lode"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+jsonc-parser = { version = "0.23", features = ["serde"] }
+toml = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sha2 = "0.10"
+sha1 = "0.10"
+md5 = "0.7"
+anyhow = "1"
+dialoguer = "0.11"
+dirs = "5"
+semver = "1"
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
+sigstore = { version = "0.14.0", default-features = false, features = ["bundle", "sigstore-trust-root"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+# `cargo binstall lode` — fetch the prebuilt binary from the cargo-dist GitHub Release instead
+# of compiling. The crate is not on crates.io, so this only resolves via the repo-scoped form:
+#   cargo binstall --git https://github.com/giovani-freitag/lode lode
+# The URL mirrors cargo-dist's archive naming: `lode-<target>.tar.xz` everywhere, `.zip` on
+# Windows; the binary sits at the archive root. Release tags are `v<version>` (release-please).
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "txz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
