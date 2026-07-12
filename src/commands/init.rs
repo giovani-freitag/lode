@@ -116,7 +116,13 @@ pub fn run(args: InitArgs) -> Result<()> {
         manifest.loader.version,
         manifest.loader.minecraft
     );
-    println!("Next: `lode add <mod>` to add your first mod.");
+    println!();
+    println!("Next steps:");
+    println!("  lode add <mod>    add a mod — resolves deps, downloads the jars");
+    println!("  lode install      set up an instance from the lockfile");
+    println!("  lode list         show the resolved pack");
+    println!();
+    println!("Docs: https://github.com/giovani-freitag/lode");
     Ok(())
 }
 
