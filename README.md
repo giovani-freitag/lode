@@ -19,6 +19,10 @@
   <img src="https://img.shields.io/badge/Quilt-8b2fc9" alt="Quilt">
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" alt="lode: scaffold a pack, add a mod, and list the resolved pack" width="820">
+</p>
+
 ---
 
 Think **npm, but for Minecraft mods**. You keep a small, human-readable manifest (`lode.json`); `lode` figures
