@@ -15,7 +15,7 @@ Set Margin 16
 Set MarginFill "#0A0A0A"
 Set BorderRadius 10
 Set WindowBar Colorful
-Set TypingSpeed 45ms
+Set TypingSpeed 60ms
 
 # lode palette: VS Code Dark+ base + the icon's amber accent (#FBBE3C -> #D97706).
 Set Theme { "name": "lode", "background": "#1E1E1E", "foreground": "#D4D4D4", "cursor": "#FBBE3C", "selection": "#264F78", "black": "#1E1E1E", "red": "#F14C4C", "green": "#23D18B", "yellow": "#FBBE3C", "blue": "#3B8EEA", "magenta": "#D670D6", "cyan": "#29B8DB", "white": "#D4D4D4", "brightBlack": "#808080", "brightRed": "#F14C4C", "brightGreen": "#23D18B", "brightYellow": "#D97706", "brightBlue": "#3B8EEA", "brightMagenta": "#D670D6", "brightCyan": "#29B8DB", "brightWhite": "#FFFFFF" }
@@ -33,22 +33,22 @@ Show
 # Scaffold interactively — pick a NON-default loader, then filter the version list by typing.
 Type "lode init"
 Enter
-Sleep 1s
+Sleep 1.5s
 Enter
-Sleep 400ms
+Sleep 900ms
 Type "me"
 Enter
-Sleep 1.5s
-Down@450ms 2
-Sleep 600ms
+Sleep 2s
+Down@650ms 2
+Sleep 1.4s
 Enter
-Sleep 2.2s
+Sleep 2.6s
 Type "1.20.1"
-Sleep 900ms
+Sleep 1.7s
 Enter
-Sleep 2.2s
+Sleep 2.6s
 Enter
-Sleep 1.8s
+Sleep 2.4s
 
 # Add a mod — resolved, its dependencies pulled in, and downloaded.
 Type "lode add rei"
@@ -58,4 +58,4 @@ Sleep 4s
 # The resolved pack: direct mod vs. its dependencies.
 Type "lode list"
 Enter
-Sleep 2.5s
+Sleep 3s
