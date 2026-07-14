@@ -27,10 +27,13 @@ pub fn run(args: InitArgs) -> Result<()> {
         None if interactive => prompt_text("Pack name", default_name)?,
         None => default_name.unwrap_or_else(|| "pack".to_string()),
     };
+    // Default the author from `git config user.name`, the way `composer init` does — so the common
+    // case is just pressing Enter rather than retyping your name every time.
+    let default_author = git_user_name();
     let author = match &args.author {
         Some(a) => a.clone(),
-        None if interactive => prompt_text("Author", None)?,
-        None => String::new(),
+        None if interactive => prompt_text("Author", default_author)?,
+        None => default_author.unwrap_or_default(),
     };
 
     let (loader, minecraft, loader_version) = select_versions(&versions, &args, interactive)?;
@@ -292,6 +295,20 @@ fn prompt_text(prompt: &str, default: Option<String>) -> Result<String> {
     }
     let value: String = input.interact()?;
     Ok(value)
+}
+
+/// The author default: the user's `git config user.name`, mirroring how `composer init` derives it.
+/// `None` when git isn't installed or the name isn't configured (then the field starts empty).
+fn git_user_name() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["config", "user.name"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 fn label_of(loader: Loader) -> &'static str {
