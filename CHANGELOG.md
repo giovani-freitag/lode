@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/giovani-freitag/lode/compare/v0.2.0...v0.2.1) (2026-07-14)
+
+
+### Features
+
+* **init:** default the author from git config user.name ([90e1d6d](https://github.com/giovani-freitag/lode/commit/90e1d6d06b5cda776e9d271d216df0f68060b291))
+
 ## [0.2.0](https://github.com/giovani-freitag/lode/compare/v0.1.0...v0.2.0) (2026-07-14)
 
 
