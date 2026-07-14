@@ -47,4 +47,7 @@ jobs:
           git config http.version HTTP/1.1
           git config http.postBuffer 524288000
           git commit -m "docs: regenerate demo gif [skip ci]"
+          # main may have moved while rendering (a release, etc.); rebase the gif commit on top so a
+          # concurrent push doesn't reject this one.
+          git pull --rebase origin main
           git push
