@@ -1,18 +1,26 @@
 name: Demo GIF
 
-# Renders demo.tape into assets/demo.gif. Manual — run after changing the CLI's output or the tape.
-# By default it only uploads the GIF as an artifact for review; pass publish=true to also commit it
-# to main. Runs on Linux because VHS needs ttyd + ffmpeg (not available on Windows).
+# Renders demo.tape into assets/demo.gif and opens a PR when the result changes — it never commits
+# to main directly, so the visual diff always gets a human glance before it ships. Runs on Linux
+# because VHS needs ttyd + ffmpeg (not available on Windows).
+#
+# Triggers:
+#   - workflow_dispatch: render on demand (e.g. to refresh after an upstream mod/version change).
+#   - push to main touching the tape or the commands the demo shows: catch output-format changes.
 on:
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Commit the rendered GIF to main (default: preview only, uploaded as an artifact)"
-        type: boolean
-        default: false
+  push:
+    branches: [main]
+    paths:
+      - demo.tape
+      - src/commands/init.rs
+      - src/commands/add.rs
+      - src/commands/list.rs
+      - src/ui.rs
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   render:
@@ -39,26 +47,24 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Render demo.tape
         run: vhs demo.tape
+      # Always publish the render as an artifact so a manual dispatch can be reviewed without a PR.
       - name: Upload the GIF for review
         uses: actions/upload-artifact@v4
         with:
           name: demo-gif
           path: assets/demo.gif
-      - name: Commit the regenerated GIF
-        if: ${{ inputs.publish }}
-        run: |
-          git add assets/demo.gif
-          if git diff --cached --quiet; then
-            echo "GIF unchanged — nothing to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Dodge git's HTTP/2 "error 400" when pushing a multi-MB binary.
-          git config http.version HTTP/1.1
-          git config http.postBuffer 524288000
-          git commit -m "docs: regenerate demo gif [skip ci]"
-          # main may have moved while rendering (a release, etc.); rebase the gif commit on top so a
-          # concurrent push doesn't reject this one.
-          git pull --rebase origin main
-          git push
+      # Open (or update) a PR only when the GIF actually changed — a no-op otherwise. The image diff
+      # in the PR is the review surface; merging is what lands it on main.
+      - name: Open a PR if the GIF changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: assets/demo.gif
+          branch: chore/refresh-demo-gif
+          delete-branch: true
+          commit-message: "docs: refresh the walkthrough gif"
+          title: "docs: refresh the walkthrough gif"
+          body: |
+            Auto-rendered from `demo.tape` (trigger: `${{ github.event_name }}`).
+
+            Review the image diff below and merge if it looks right. Close it if the change is just
+            render jitter and not worth shipping.
