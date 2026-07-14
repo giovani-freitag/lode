@@ -1,5 +1,8 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::loader::Loader;
+use crate::side::Side;
+
 /// A package manager for Minecraft modpacks.
 #[derive(Debug, Parser)]
 #[command(name = "lode", version, about)]
@@ -10,7 +13,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Scaffold a new pack (`lode.jsonc`) in the current directory.
+    /// Scaffold a new pack (`lode.json`) in the current directory.
     Init(InitArgs),
     /// Convert an existing pack from another tool into this lode project.
     Import(ImportArgs),
@@ -72,9 +75,9 @@ pub struct InitArgs {
     pub version: String,
     #[arg(long)]
     pub minecraft: Option<String>,
-    /// The loader: forge | neoforge | fabric | quilt.
+    /// The mod loader.
     #[arg(long)]
-    pub loader: Option<String>,
+    pub loader: Option<Loader>,
     #[arg(long = "loader-version")]
     pub loader_version: Option<String>,
     /// Accept defaults without prompting.
@@ -91,7 +94,7 @@ pub struct ImportArgs {
     /// Write the lode project into this directory instead of the current one.
     #[arg(long)]
     pub out: Option<std::path::PathBuf>,
-    /// Overwrite an existing lode.jsonc.
+    /// Overwrite an existing lode.json.
     #[arg(long)]
     pub force: bool,
 }
@@ -121,18 +124,18 @@ pub struct AddArgs {
     /// Pin an exact version number instead of the latest.
     #[arg(long)]
     pub version: Option<String>,
-    /// Override the side: client | server | both | none.
+    /// Override the side the mod installs on.
     #[arg(long)]
-    pub side: Option<String>,
+    pub side: Option<Side>,
+    /// Search Modrinth and pick from the matches, instead of requiring an exact slug/id/URL.
+    #[arg(long)]
+    pub search: bool,
     /// Resolve from CurseForge instead of Modrinth (needs CF_API_KEY).
     #[arg(long, alias = "cf")]
     pub curseforge: bool,
     /// Only update the manifest + lockfile; don't download the jars.
     #[arg(long)]
     pub lock_only: bool,
-    /// Take the first search hit without prompting.
-    #[arg(short = 'y', long)]
-    pub yes: bool,
 }
 
 #[derive(Debug, Args)]

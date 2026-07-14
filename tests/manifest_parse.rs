@@ -3,24 +3,37 @@ use lode::manifest::Manifest;
 use lode::side::Side;
 
 #[test]
-fn parses_jsonc_with_comments_and_trailing_commas() {
+fn parses_strict_json_and_rejects_jsonc_extras() {
+    // Strict JSON only (like package.json): plain JSON parses; comments and trailing commas do not.
     let text = r#"{
-        // core rendering
         "pack": { "name": "Test", "author": "A", "version": "0.1.0" },
         "loader": { "name": "forge", "minecraft": "1.20.1", "version": "47.3.0" },
         "mods": {
-            "sodium": "^0.5.8", // pinned range
-            "jei": { "version": "*", "side": "client" },
+            "sodium": "^0.5.8",
+            "jei": { "version": "*", "side": "client" }
         }
     }"#;
 
-    let manifest = Manifest::parse(text).expect("JSONC should parse");
-
+    let manifest = Manifest::parse(text).expect("plain JSON should parse");
     assert_eq!(manifest.pack.name, "Test");
     assert_eq!(manifest.loader.name, Loader::Forge);
     assert_eq!(manifest.mods["sodium"].constraint(), "^0.5.8");
-    assert_eq!(manifest.mods["jei"].constraint(), "*");
     assert_eq!(manifest.mods["jei"].side(), Some(Side::Client));
+
+    // A // comment and a trailing comma are now hard errors.
+    assert!(
+        Manifest::parse(&format!("// core\n{text}")).is_err(),
+        "a comment must be rejected"
+    );
+    let trailing = r#"{
+        "pack": { "name": "T", "author": "A", "version": "0.1.0" },
+        "loader": { "name": "forge", "minecraft": "1.20.1", "version": "47.3.0" },
+        "mods": { "sodium": "*", }
+    }"#;
+    assert!(
+        Manifest::parse(trailing).is_err(),
+        "a trailing comma must be rejected"
+    );
 }
 
 #[test]

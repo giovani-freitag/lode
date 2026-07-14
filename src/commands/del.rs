@@ -8,6 +8,7 @@ use crate::cli::DelArgs;
 use crate::lock::Lock;
 use crate::manifest::Manifest;
 use crate::paths::PackPaths;
+use crate::resolve;
 
 pub fn run(args: DelArgs) -> Result<()> {
     let paths = PackPaths::discover_from_cwd()?;
@@ -42,7 +43,23 @@ pub fn run(args: DelArgs) -> Result<()> {
     }
 
     let (direct, deps) = count_kinds(&lock);
-    println!("Removed {} ({deleted} jar(s) deleted).", args.name);
+    // Be honest about the verb: the mod is only "removed" if it actually left the resolved graph.
+    // If another declared mod still depends on it, it stays as a dependency — say so.
+    match lock.find(&args.name) {
+        Some(node) => {
+            let by = node
+                .requested_by
+                .iter()
+                .find(|r| r.as_str() != resolve::ROOT_REQUESTER)
+                .map(|s| s.as_str())
+                .unwrap_or("another mod");
+            println!(
+                "Undeclared {} — it stays as a dependency of {by} ({deleted} jar(s) deleted).",
+                args.name
+            );
+        }
+        None => println!("Removed {} ({deleted} jar(s) deleted).", args.name),
+    }
     println!(
         "Pack now has {} mods ({direct} direct, {deps} dependencies).",
         lock.mods.len()

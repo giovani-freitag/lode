@@ -5,7 +5,7 @@ The complete list of commands and flags. For a quick start see the
 
 Verbs follow npm: `add`/`del` manage what's **declared** in the manifest; `install`
 (`i`) materializes an instance from the **lockfile**. Everything is driven by two files
-in the pack root — `lode.jsonc` (the manifest you edit) and `lode.lock` (generated).
+in the pack root — `lode.json` (the manifest you edit) and `lode.lock` (generated).
 
 | Command | Aliases | What it does |
 |---------|---------|--------------|
@@ -31,7 +31,7 @@ in the pack root — `lode.jsonc` (the manifest you edit) and `lode.lock` (gener
 
 ## `lode init`
 
-Scaffold a new pack (`lode.jsonc`) in the current directory. Interactive by default —
+Scaffold a new pack (`lode.json`) in the current directory. Interactive by default —
 pick the loader, then choose from the **live** list of Minecraft and loader versions.
 Fully scriptable with flags (any omitted version resolves to the latest).
 
@@ -56,7 +56,7 @@ lode init -y --loader fabric --minecraft 1.20.1 --name "My Pack" --author me
 lode import <source> [<dir>] [--out <dir>] [--force]
 ```
 
-Convert an existing pack from another tool into this lode project — writing `lode.jsonc` +
+Convert an existing pack from another tool into this lode project — writing `lode.json` +
 `lode.lock`, and **leaving the source untouched**. This is the on-ramp for packs already
 maintained with packwiz.
 
@@ -65,14 +65,14 @@ The source keyword is mandatory (it names what's being consumed, so the directio
 packwiz pack directory (or its `pack.toml`) and defaults to the current directory.
 
 ```sh
-lode import packwiz .                       # adopt the packwiz pack here → lode.jsonc + lode.lock
+lode import packwiz .                       # adopt the packwiz pack here → lode.json + lode.lock
 lode import packwiz ./oldpack --out ./newpack
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--out <dir>` | Write the lode project into this directory instead of the current one. |
-| `--force` | Overwrite an existing `lode.jsonc` (otherwise import refuses). |
+| `--force` | Overwrite an existing `lode.json` (otherwise import refuses). |
 
 Notes on the packwiz conversion:
 
@@ -152,7 +152,7 @@ local `.tar.gz`. The host is required — there's no default platform and no gue
 
 For a repo ref, `get` downloads the release's `.tar.gz` and its `.sha256` sibling and **verifies
 the archive against that published checksum** (the trust anchor). It then unpacks the thin archive
-(`lode.jsonc` + `lode.lock` + overlays) and runs the install — fetching the jars from their
+(`lode.json` + `lode.lock` + overlays) and runs the install — fetching the jars from their
 providers, each verified against its lock hash. A **private** repo needs `GITHUB_TOKEN` set (it
 authenticates both the release lookup and the asset download).
 
@@ -244,7 +244,7 @@ lode bundle [--out <dir>]
 
 Pack the **definition** of the pack into a distributable, deterministic `<name>-<version>.tar.gz`
 plus a `.sha256` checksum — ready to attach to a GitHub release. The archive is **thin**: it
-contains `lode.jsonc`, `lode.lock`, and the overlay sources (config, scripts) — and deliberately
+contains `lode.json`, `lode.lock`, and the overlay sources (config, scripts) — and deliberately
 **no mod jars** (redistribution is forbidden; jars are fetched from the provider and verified
 against the lock on install) and no runtime files.
 

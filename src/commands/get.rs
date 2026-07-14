@@ -146,13 +146,13 @@ pub fn run(args: GetArgs) -> Result<()> {
         .into
         .clone()
         .unwrap_or_else(|| PathBuf::from(&fetched.name));
-    unpack(targz, &target)?;
+    unpack_into(targz, &target)?;
     println!("Unpacked the pack into {}", target.display());
 
     // The unpacked pack is self-describing; from here it's an ordinary local install.
     let paths = PackPaths { root: target };
     if !paths.manifest().is_file() {
-        bail!("the archive did not contain a lode.jsonc — is it a lode pack?");
+        bail!("the archive did not contain a lode.json — is it a lode pack?");
     }
     if args.no_install {
         println!(
@@ -420,6 +420,42 @@ fn unpack(targz: &[u8], dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Extract into `dest`, atomically for a fresh target: stage into a temp sibling directory so an
+/// interrupted or malformed extraction leaves a throwaway dir — never a half-populated pack where
+/// `dest` should be — then rename it into place. When `dest` already exists we can't rename onto it,
+/// so we merge in place (the prior behavior); the only exposure left is a re-`get` over an existing
+/// pack.
+fn unpack_into(targz: &[u8], dest: &Path) -> Result<()> {
+    if dest.exists() {
+        return unpack(targz, dest);
+    }
+    let parent = dest
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+
+    let staging = tempfile::TempDir::new_in(parent).context("creating a staging directory")?;
+    unpack(targz, staging.path())?;
+    if !staging
+        .path()
+        .join(crate::manifest::MANIFEST_FILENAME)
+        .is_file()
+    {
+        // `staging` drops here, deleting the partial extraction — nothing lands at `dest`.
+        bail!(
+            "the archive did not contain a {} — is it a lode pack? (nothing was written)",
+            crate::manifest::MANIFEST_FILENAME
+        );
+    }
+    let staged = staging.keep();
+    if let Err(e) = fs::rename(&staged, dest) {
+        let _ = fs::remove_dir_all(&staged);
+        return Err(e).with_context(|| format!("finalizing {}", dest.display()));
+    }
+    Ok(())
+}
+
 const GITHUB_ACTIONS_ISSUER: &str = "https://token.actions.githubusercontent.com";
 
 /// Verify a Sigstore signature bundle for the archive (native, via sigstore-rs), proving it was
@@ -537,14 +573,56 @@ mod tests {
     fn unpack_round_trips_a_bundle() {
         // A tar.gz built by `bundle::archive` unpacks back to the same files.
         let entries = vec![
-            ("lode.jsonc".to_string(), b"{}".to_vec()),
+            ("lode.json".to_string(), b"{}".to_vec()),
             ("lode.lock".to_string(), b"lock".to_vec()),
             ("config/x.toml".to_string(), b"cfg".to_vec()),
         ];
         let targz = crate::commands::bundle::archive(&entries).unwrap();
         let dir = tempfile::tempdir().unwrap();
         unpack(&targz, dir.path()).unwrap();
-        assert_eq!(fs::read(dir.path().join("lode.jsonc")).unwrap(), b"{}");
+        assert_eq!(fs::read(dir.path().join("lode.json")).unwrap(), b"{}");
         assert_eq!(fs::read(dir.path().join("config/x.toml")).unwrap(), b"cfg");
+    }
+
+    #[test]
+    fn unpack_into_stages_then_renames_a_fresh_target() {
+        let entries = vec![
+            ("lode.json".to_string(), b"{}".to_vec()),
+            ("config/x.toml".to_string(), b"cfg".to_vec()),
+        ];
+        let targz = crate::commands::bundle::archive(&entries).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("mypack");
+
+        unpack_into(&targz, &target).unwrap();
+
+        assert!(target.join("lode.json").is_file());
+        assert_eq!(fs::read(target.join("config/x.toml")).unwrap(), b"cfg");
+        // Only the finalized target remains in the parent — no leftover staging dir.
+        let siblings: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(siblings, vec![std::ffi::OsString::from("mypack")]);
+    }
+
+    #[test]
+    fn unpack_into_rejects_a_manifestless_archive_and_writes_nothing() {
+        let entries = vec![("config/x.toml".to_string(), b"cfg".to_vec())];
+        let targz = crate::commands::bundle::archive(&entries).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("mypack");
+
+        assert!(unpack_into(&targz, &target).is_err());
+
+        assert!(
+            !target.exists(),
+            "a manifest-less archive must leave no target behind"
+        );
+        assert_eq!(
+            fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "the staging dir must be cleaned up on rejection"
+        );
     }
 }

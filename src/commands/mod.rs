@@ -15,34 +15,12 @@ pub mod update;
 pub mod verify;
 pub mod why;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 
-use crate::loader::Loader;
 use crate::lock::Lock;
 use crate::manifest::Manifest;
 use crate::paths::PackPaths;
 use crate::resolve;
-use crate::side::Side;
-
-pub(crate) fn parse_side(s: &str) -> Result<Side> {
-    Ok(match s.to_ascii_lowercase().as_str() {
-        "client" => Side::Client,
-        "server" => Side::Server,
-        "both" => Side::Both,
-        "none" => Side::None,
-        other => bail!("unknown side '{other}' (use client|server|both|none)"),
-    })
-}
-
-pub(crate) fn parse_loader(s: &str) -> Result<Loader> {
-    Ok(match s.to_ascii_lowercase().as_str() {
-        "forge" => Loader::Forge,
-        "neoforge" => Loader::Neoforge,
-        "fabric" => Loader::Fabric,
-        "quilt" => Loader::Quilt,
-        other => bail!("unknown loader '{other}' (use forge|neoforge|fabric|quilt)"),
-    })
-}
 
 /// Resolve the manifest into a lockfile and persist it, **respecting** the existing lock — mods
 /// already locked keep their versions; only new ones resolve fresh. The shared core of add, del,
@@ -71,12 +49,30 @@ pub(crate) fn count_kinds(lock: &Lock) -> (usize, usize) {
     (direct, lock.mods.len() - direct)
 }
 
+/// Warn — on stderr, so a `--json` stdout stays clean — when the lock no longer matches the manifest
+/// (it was edited since the lock was written). Read-only commands surface this instead of silently
+/// reporting stale pack contents. The hash formula mirrors how the resolver stamps `manifest_hash`.
+pub(crate) fn warn_if_stale(manifest: &Manifest, lock: &Lock) -> Result<()> {
+    let manifest_hash = format!(
+        "sha256:{}",
+        crate::hash::sha256_hex(manifest.to_json()?.as_bytes())
+    );
+    if manifest_hash != lock.manifest_hash {
+        eprintln!(
+            "! lode.lock is stale (the manifest changed since it was written) — run `lode refresh`."
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::loader::Loader;
     use crate::lock::{Download, LockedMod, ResolverMeta, LOCKFILE_VERSION};
     use crate::manifest::LoaderSpec;
     use crate::provider::{DownloadMode, Provider};
+    use crate::side::Side;
 
     fn node(slug: &str, requested_by: &[&str]) -> LockedMod {
         LockedMod {

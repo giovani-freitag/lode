@@ -12,7 +12,7 @@ pub struct PackPaths {
 }
 
 impl PackPaths {
-    /// Walk up from `start` looking for a `lode.jsonc`, so commands work from any subdirectory.
+    /// Walk up from `start` looking for a `lode.json`, so commands work from any subdirectory.
     pub fn discover(start: &Path) -> Result<PackPaths> {
         let mut dir = Some(start);
         while let Some(current) = dir {

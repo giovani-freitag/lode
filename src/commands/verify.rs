@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{bail, Result};
 
 use crate::cli::VerifyArgs;
-use crate::hash::{hash_by_format, sha256_hex};
+use crate::hash::hash_by_format;
 use crate::lock::{Lock, LockedMod};
 use crate::manifest::Manifest;
 use crate::paths::PackPaths;
@@ -31,10 +31,7 @@ pub fn run(args: VerifyArgs) -> Result<()> {
     let lock = Lock::load(&paths.lock())?;
 
     // Verifying against a lock that no longer matches the manifest is checking a moving target.
-    let manifest_hash = format!("sha256:{}", sha256_hex(manifest.to_json()?.as_bytes()));
-    if manifest_hash != lock.manifest_hash {
-        println!("! lode.lock is stale (the manifest changed since it was written) — run `lode refresh`.");
-    }
+    super::warn_if_stale(&manifest, &lock)?;
 
     let target = args.into.unwrap_or_else(|| paths.root.clone());
     let mods_dir = target.join("mods");
@@ -89,7 +86,7 @@ fn check_mods(mods: &[LockedMod], mods_dir: &Path) -> Vec<(String, String, Statu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hash::md5_hex;
+    use crate::hash::{md5_hex, sha256_hex};
     use crate::lock::Download;
     use crate::provider::{DownloadMode, Provider};
     use crate::side::Side;

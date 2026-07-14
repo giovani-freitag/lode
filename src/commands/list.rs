@@ -24,6 +24,9 @@ pub fn run(args: ListArgs) -> Result<()> {
     }
 
     let lock = Lock::load(&lock_path)?;
+    if let Ok(manifest) = Manifest::load(&paths.manifest()) {
+        let _ = super::warn_if_stale(&manifest, &lock);
+    }
 
     if args.json {
         println!("{}", lock.to_json()?.trim_end());

@@ -45,12 +45,12 @@ Enter
 Sleep 3s
 
 # Add a mod — resolved and downloaded.
-Type "lode add sodium -y"
+Type "lode add sodium"
 Enter
 Sleep 3.5s
 
 # Add one with dependencies — they come along automatically.
-Type "lode add rei -y"
+Type "lode add rei"
 Enter
 Sleep 4.5s
 

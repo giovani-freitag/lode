@@ -1,8 +1,9 @@
+use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 
-use super::{count_kinds, parse_side, resolve_and_save};
+use super::{count_kinds, resolve_and_save};
 use crate::cli::AddArgs;
 use crate::manifest::{Manifest, ModSpec, ModSpecDetailed};
 use crate::paths::PackPaths;
@@ -21,25 +22,14 @@ pub fn run(args: AddArgs) -> Result<()> {
         prepare_remote(&args, &manifest)?
     };
 
-    // Capture before moving `spec` — persistence differs for a brand-new vs. existing entry.
+    // Captured only to decide whether to show the undo hint below (a brand-new mod, not a re-add).
     let already_declared = manifest.mods.contains_key(&slug);
-    let spec_json = serde_json::to_string(&spec)?;
     manifest.mods.insert(slug.clone(), spec);
 
     // Resolve against the full manifest so the new mod's dependencies are pulled in too.
     let lock = resolve_and_save(&paths, &manifest)?;
-
-    // Persist the manifest. For a new mod, splice it in textually so hand-written comments survive;
-    // for a version change on an existing mod, a full re-serialize is fine.
-    if already_declared {
-        manifest.save(&paths.manifest())?;
-    } else {
-        let text = std::fs::read_to_string(paths.manifest())?;
-        match crate::manifest::insert_mod_text(&text, &slug, &spec_json) {
-            Some(updated) => std::fs::write(paths.manifest(), updated)?,
-            None => manifest.save(&paths.manifest())?,
-        }
-    }
+    // Persist the manifest canonically — like `npm install <pkg>` rewriting package.json.
+    manifest.save(&paths.manifest())?;
 
     let added = lock
         .find(&slug)
@@ -51,6 +41,11 @@ pub fn run(args: AddArgs) -> Result<()> {
         "Pack now has {} mods ({direct} direct, {deps} dependencies).",
         lock.mods.len()
     );
+    // Surface the resolved slug so the undo is discoverable even after the install output scrolls
+    // (a search term or nickname won't work with `del` — only the resolved slug does).
+    if !already_declared {
+        println!("Undo with: lode del {slug}");
+    }
 
     // Like `npm install <pkg>`: adding also downloads the jar (and any new deps) into the
     // instance, unless the user only wants the manifest/lockfile updated.
@@ -74,14 +69,17 @@ fn prepare_remote(args: &AddArgs, manifest: &Manifest) -> Result<(String, ModSpe
     let use_curseforge = args.curseforge || args.query.contains("curseforge.com");
     let query = normalize_query(&args.query);
     let constraint = args.version.clone().unwrap_or_else(|| "*".to_string());
-    let side = args.side.as_deref().map(parse_side).transpose()?;
+    let side = args.side;
 
     let (slug, provider) = if use_curseforge {
         let cf = Curseforge::from_config()?;
         (cf.slug_of(&query)?, Some(Provider::Curseforge))
     } else {
         let modrinth = Modrinth::new()?;
-        (resolve_slug(&modrinth, &query, manifest, args.yes)?, None)
+        (
+            resolve_slug(&modrinth, &query, manifest, args.search)?,
+            None,
+        )
     };
 
     // A bare version constraint suffices for a plain Modrinth mod; anything with a side or a
@@ -120,7 +118,7 @@ fn prepare_local(paths: &PackPaths, args: &AddArgs) -> Result<(String, ModSpec)>
         std::fs::copy(src, &dest).with_context(|| format!("bundling {filename} into local/"))?;
     }
 
-    let side = args.side.as_deref().map(parse_side).transpose()?;
+    let side = args.side;
     let spec = ModSpec::Detailed(ModSpecDetailed {
         version: "local".to_string(),
         side,
@@ -160,29 +158,58 @@ fn normalize_query(query: &str) -> String {
     query.to_string()
 }
 
-/// Turn a slug/id/search-term into a concrete Modrinth slug, prompting to disambiguate a search.
+/// Turn a slug/id/URL into a concrete Modrinth slug. By default `add` is **exact**: it accepts the
+/// query only when it's a real slug/id/URL with a build for the pack's loader + Minecraft version,
+/// and never guesses a different mod. `--search` opts into a Modrinth search and shows the matches to
+/// pick from — the `apt search` vs `apt install` split.
 fn resolve_slug(
     modrinth: &Modrinth,
     query: &str,
     manifest: &Manifest,
-    yes: bool,
+    search: bool,
 ) -> Result<String> {
-    if let Some(slug) = modrinth.project_slug(query)? {
-        return Ok(slug);
+    let loader = manifest.loader.name;
+    let mc = &manifest.loader.minecraft;
+
+    if !search {
+        return match modrinth.compatible_slug(query, loader, mc)? {
+            Some(slug) => Ok(slug),
+            None => bail!(
+                "no exact match for '{query}' on Modrinth for {} {mc}. Run \
+                 `lode add {query} --search` to search and pick, paste the Modrinth URL, or add \
+                 --cf if it's CurseForge-only.",
+                loader.modrinth_facet()
+            ),
+        };
     }
 
+    // --search: browse Modrinth and pick — never auto-accept a guess.
     let hits = crate::ui::spin("Searching Modrinth", "Search complete", || {
-        modrinth.search(query, manifest.loader.name, &manifest.loader.minecraft)
+        modrinth.search(query, loader, mc)
     })?;
     if hits.is_empty() {
-        bail!("no Modrinth project matches '{query}' for this loader/MC version");
+        bail!(
+            "no mod matching '{query}' on Modrinth for {} {mc} — check the spelling, paste the \
+             Modrinth URL, or add --cf if it's CurseForge-only.",
+            loader.modrinth_facet()
+        );
     }
-    // A single hit, `--yes`, or a non-interactive stream can't disambiguate — take the top hit.
-    if !crate::ui::is_interactive(yes) || hits.len() == 1 {
-        return Ok(hits[0].slug.clone());
+    if !std::io::stdin().is_terminal() {
+        // No terminal to pick in — list the matches and let the user re-run with an exact slug,
+        // rather than choosing one for them.
+        let list = hits
+            .iter()
+            .take(8)
+            .map(|h| format!("{} ({})", h.slug, h.title))
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!(
+            "--search needs a terminal to pick. Matches for '{query}': {list}. \
+             Re-run `lode add <slug>` with one of them."
+        );
     }
 
-    let mut picker = cliclack::select("Select a mod");
+    let mut picker = cliclack::select(format!("Search results for '{query}' — pick one"));
     for h in &hits {
         let label = format!("{} — {}", h.title, truncate(&h.description, 60));
         picker = picker.item(h.slug.clone(), label, "");

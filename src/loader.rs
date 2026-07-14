@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// The mod loader a pack targets. A pack targets exactly one: the loaders are distinct runtimes
 /// whose mods are not interchangeable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Loader {
     Forge,

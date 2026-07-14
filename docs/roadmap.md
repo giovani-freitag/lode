@@ -10,7 +10,6 @@ Rough, unordered — priorities shift with use.
 ## Resolution & manifest
 - **Version ranges:** `^` / `~` constraints (today: `*` = latest, or an exact version).
 - **CurseForge:** validate the live add/install path end-to-end (needs an API key).
-- **Comment preservation** when `lode add` rewrites `lode.jsonc`.
 
 ## Packs
 - **Multi-loader packs** (targeting more than one loader).

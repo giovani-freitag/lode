@@ -27,7 +27,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
 }
 
 /// Convert a packwiz pack (`pack.toml` + `mods/*.pw.toml`) into a lode project — writing
-/// `lode.jsonc` + `lode.lock`, leaving the source untouched. The metafiles already carry the
+/// `lode.json` + `lode.lock`, leaving the source untouched. The metafiles already carry the
 /// resolved file (url + hash + ids), so the jars aren't re-picked; the one thing packwiz never
 /// records — the human version number — is recovered from Modrinth (keyless), which also yields
 /// the dependency edges packwiz's flat index throws away.

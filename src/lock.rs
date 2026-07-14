@@ -18,7 +18,7 @@ pub const LOCKFILE_VERSION: u32 = 1;
 #[serde(rename_all = "camelCase")]
 pub struct Lock {
     pub lockfile_version: u32,
-    /// Integrity hash of the `lode.jsonc` that produced this lock. If the manifest changed,
+    /// Integrity hash of the `lode.json` that produced this lock. If the manifest changed,
     /// the lock is stale and must be re-resolved (the `Cargo.lock` vs `Cargo.toml` check).
     pub manifest_hash: String,
     pub loader: LoaderSpec,
@@ -126,9 +126,7 @@ impl Lock {
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        fs::write(path, self.to_json()?)
-            .with_context(|| format!("writing lock {}", path.display()))?;
-        Ok(())
+        crate::atomic::write(path, self.to_json()?)
     }
 
     pub fn find(&self, slug: &str) -> Option<&LockedMod> {

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Which logical side a mod belongs to — client-only, server-only, both, or `None` for a project
 /// a provider marks as neither required nor supported anywhere. `None` is kept distinct from
 /// `Both` so the distinction survives a round-trip instead of being silently widened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Side {
     Client,

@@ -15,7 +15,7 @@ pub fn run(args: UpdateArgs) -> Result<()> {
     // Refuse to update a mod the manifest pins — the pin is the whole point.
     if let Some(slug) = &args.name {
         if manifest.mods.get(slug).map(|s| s.pin()).unwrap_or(false) {
-            bail!("'{slug}' is pinned — remove the pin in lode.jsonc to update it");
+            bail!("'{slug}' is pinned — remove the pin in lode.json to update it");
         }
     }
 

@@ -47,6 +47,8 @@ struct VersionResp {
     version_number: String,
     version_type: String,
     date_published: String,
+    #[serde(default)]
+    loaders: Vec<String>,
     files: Vec<VersionFile>,
     #[serde(default)]
     dependencies: Vec<VersionDep>,
@@ -122,6 +124,16 @@ fn choose_version<'a>(versions: &'a [VersionResp], constraint: &str) -> Option<&
         .copied()
 }
 
+/// Whether a Modrinth version actually lists a loader this pack can use. Modrinth's `loaders` search
+/// facet is unreliable cross-loader, so a chosen version's own `loaders` are the source of truth — a
+/// Quilt pack accepts `fabric` builds, matching `Loader::compatible_facets`.
+fn version_supports_loader(version: &VersionResp, loader: Loader) -> bool {
+    version
+        .loaders
+        .iter()
+        .any(|l| loader.compatible_facets().contains(&l.as_str()))
+}
+
 /// The file to download for a version: the primary-flagged file, else the first listed.
 fn select_file(files: &[VersionFile]) -> Option<&VersionFile> {
     files.iter().find(|f| f.primary).or_else(|| files.first())
@@ -163,9 +175,17 @@ impl Modrinth {
         })
     }
 
-    /// Look up a project's canonical slug, or `None` if it doesn't exist. Used by `add` to
-    /// validate a slug/id before committing it to the manifest, without picking a version yet.
-    pub fn project_slug(&self, id_or_slug: &str) -> Result<Option<String>> {
+    /// The canonical slug for `id_or_slug`, but only when the project actually has a build for this
+    /// loader + Minecraft version. Returns `None` if the project doesn't exist *or* has no compatible
+    /// build — so `add` can fall through to a facet-filtered search instead of committing to an exact
+    /// match it can't install. (A bare project lookup can't see this, which is how `add <slug>` for a
+    /// wrong-loader mod used to be accepted and then fail late.)
+    pub fn compatible_slug(
+        &self,
+        id_or_slug: &str,
+        loader: Loader,
+        mc_version: &str,
+    ) -> Result<Option<String>> {
         let resp = self
             .client
             .get(format!("{}/project/{}", self.base, id_or_slug))
@@ -178,7 +198,25 @@ impl Modrinth {
             .error_for_status()
             .with_context(|| format!("Modrinth error for '{id_or_slug}'"))?;
         let project: ProjectResp = crate::http::json_capped(resp, "Modrinth project")?;
-        Ok(Some(project.slug))
+
+        let loaders_facet =
+            serde_json::to_string(&loader.compatible_facets().iter().collect::<Vec<_>>())?;
+        let versions_facet = format!(r#"["{mc_version}"]"#);
+        let resp = self
+            .client
+            .get(format!("{}/project/{}/version", self.base, id_or_slug))
+            .query(&[
+                ("loaders", loaders_facet.as_str()),
+                ("game_versions", versions_facet.as_str()),
+            ])
+            .send()
+            .with_context(|| format!("listing versions for '{id_or_slug}'"))?
+            .error_for_status()
+            .with_context(|| format!("listing versions for '{id_or_slug}'"))?;
+        let versions: Vec<VersionResp> = crate::http::json_capped(resp, "Modrinth versions")?;
+
+        let compatible = versions.iter().any(|v| version_supports_loader(v, loader));
+        Ok(compatible.then_some(project.slug))
     }
 
     fn side_from(project: &ProjectResp) -> Side {
@@ -239,6 +277,10 @@ impl Modrinth {
             .error_for_status()
             .with_context(|| format!("listing versions for '{id_or_slug}'"))?;
         let mut versions: Vec<VersionResp> = crate::http::json_capped(resp, "Modrinth versions")?;
+
+        // The loaders facet is unreliable cross-loader; drop any version that doesn't actually list
+        // a compatible loader so a wrong-loader build can never be chosen.
+        versions.retain(|v| version_supports_loader(v, loader));
 
         if versions.is_empty() {
             bail!(
@@ -366,6 +408,7 @@ mod tests {
             version_number: version_number.to_string(),
             version_type: version_type.to_string(),
             date_published: date_published.to_string(),
+            loaders: Vec::new(),
             files: Vec::new(),
             dependencies: Vec::new(),
         }
@@ -640,5 +683,30 @@ mod tests {
             Some(("sha1".to_string(), "only-sha1".to_string()))
         );
         assert_eq!(pick_hash(&hashes(None, None)), None);
+    }
+
+    // --- version_supports_loader -----------------------------------------------------------
+
+    #[test]
+    fn version_supports_loader_matches_compatible_facets() {
+        let mut v = ver("a", "2024-01-01T00:00:00Z", "release", "1.0.0");
+        v.loaders = vec!["fabric".to_string()];
+
+        assert!(version_supports_loader(&v, Loader::Fabric));
+        assert!(
+            version_supports_loader(&v, Loader::Quilt),
+            "a Quilt pack accepts a fabric-loader build (compatible_facets)"
+        );
+        assert!(
+            !version_supports_loader(&v, Loader::Forge),
+            "a fabric-only build must not satisfy a Forge pack"
+        );
+    }
+
+    #[test]
+    fn version_supports_loader_is_false_when_loaders_absent() {
+        // A version listing no loaders can't be assumed compatible with any pack loader.
+        let v = ver("a", "2024-01-01T00:00:00Z", "release", "1.0.0");
+        assert!(!version_supports_loader(&v, Loader::Fabric));
     }
 }

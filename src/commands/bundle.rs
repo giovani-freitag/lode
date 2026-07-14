@@ -7,7 +7,7 @@ use flate2::Compression;
 
 use crate::cli::BundleArgs;
 use crate::hash::sha256_hex;
-use crate::lock::LOCK_FILENAME;
+use crate::lock::{Lock, LOCK_FILENAME};
 use crate::manifest::{Manifest, MANIFEST_FILENAME};
 use crate::paths::PackPaths;
 
@@ -64,6 +64,14 @@ pub fn build_archive(paths: &PackPaths, manifest: &Manifest) -> Result<BuiltArch
     if !paths.lock().is_file() {
         bail!("no lode.lock — run `lode install` or `lode refresh` first");
     }
+    // Parse the lock before packaging so a truncated/corrupt lockfile fails loudly here instead of
+    // being shipped verbatim and exploding downstream for whoever installs the published pack. The
+    // raw on-disk bytes are still what gets archived (keeping the published checksum deterministic);
+    // the parse is purely a validation guard.
+    Lock::load(&paths.lock()).context(
+        "refusing to bundle a malformed lode.lock — run `lode refresh` to regenerate it",
+    )?;
+
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     entries.push((
         MANIFEST_FILENAME.to_string(),
@@ -143,7 +151,7 @@ mod tests {
     fn archive_is_deterministic_and_order_independent() {
         let entries = vec![
             ("lode.lock".to_string(), b"lockbytes".to_vec()),
-            ("lode.jsonc".to_string(), b"manifestbytes".to_vec()),
+            ("lode.json".to_string(), b"manifestbytes".to_vec()),
             ("config/a.toml".to_string(), b"aaa".to_vec()),
         ];
         let first = archive(&entries).unwrap();
@@ -157,7 +165,7 @@ mod tests {
     #[test]
     fn archive_round_trips_every_entry() {
         let entries = vec![
-            ("lode.jsonc".to_string(), b"m".to_vec()),
+            ("lode.json".to_string(), b"m".to_vec()),
             ("lode.lock".to_string(), b"l".to_vec()),
             ("config/a.toml".to_string(), b"aaa".to_vec()),
         ];
@@ -170,7 +178,7 @@ mod tests {
             got.push(entry.path().unwrap().to_string_lossy().into_owned());
         }
         got.sort();
-        assert_eq!(got, vec!["config/a.toml", "lode.jsonc", "lode.lock"]);
+        assert_eq!(got, vec!["config/a.toml", "lode.json", "lode.lock"]);
     }
 
     #[test]

@@ -1,7 +1,8 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 
 use crate::cli::WhyArgs;
 use crate::lock::Lock;
+use crate::manifest::Manifest;
 use crate::paths::PackPaths;
 use crate::resolve::ROOT_REQUESTER;
 
@@ -11,9 +12,29 @@ pub fn run(args: WhyArgs) -> Result<()> {
         bail!("no lockfile yet — run `lode refresh` first");
     }
     let lock = Lock::load(&paths.lock())?;
-    let node = lock
-        .find(&args.name)
-        .ok_or_else(|| anyhow!("'{}' is not in the pack", args.name))?;
+    let manifest = Manifest::load(&paths.manifest()).ok();
+    if let Some(m) = &manifest {
+        let _ = super::warn_if_stale(m, &lock);
+    }
+
+    let node = match lock.find(&args.name) {
+        Some(n) => n,
+        None => {
+            // Not resolved. If it's declared in the manifest, the lock is just stale or missing it —
+            // that's a "run refresh", not a "this mod doesn't exist".
+            if manifest
+                .as_ref()
+                .is_some_and(|m| m.mods.contains_key(&args.name))
+            {
+                println!(
+                    "{} is declared in the manifest but not yet resolved — run `lode refresh`.",
+                    args.name
+                );
+                return Ok(());
+            }
+            bail!("'{}' is not in the pack", args.name);
+        }
+    };
 
     println!("{} ({})", node.slug, node.version);
 

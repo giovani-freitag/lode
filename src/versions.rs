@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
@@ -39,6 +39,62 @@ impl Versions {
         Ok(select_minecraft_versions(tags))
     }
 
+    /// Minecraft versions the given loader actually ships builds for, newest first. This is the set
+    /// `lode init` offers so a loader+Minecraft pair can never dead-end: Fabric and Quilt are
+    /// constrained by each service's supported game-version list; Forge and NeoForge by the versions
+    /// their own release metadata publishes (NeoForge's 1.20.1 line, which lives under the legacy
+    /// `forge` artifact, is folded in).
+    pub fn minecraft_for(&self, loader: Loader) -> Result<Vec<String>> {
+        let releases = self.minecraft()?;
+        let supported = self.supported_minecraft(loader)?;
+        Ok(releases
+            .into_iter()
+            .filter(|mc| supported.contains(mc))
+            .collect())
+    }
+
+    /// The (unordered) set of Minecraft versions a loader publishes builds for.
+    fn supported_minecraft(&self, loader: Loader) -> Result<HashSet<String>> {
+        match loader {
+            Loader::Fabric => self.game_versions("https://meta.fabricmc.net/v2/versions/game"),
+            Loader::Quilt => self.game_versions("https://meta.quiltmc.org/v3/versions/game"),
+            Loader::Forge => Ok(forge_minecraft_versions(&self.forge_promos()?)),
+            Loader::Neoforge => self.neoforge_minecraft_versions(),
+        }
+    }
+
+    /// Supported Minecraft versions for Fabric/Quilt, from each service's `/versions/game` feed.
+    fn game_versions(&self, url: &str) -> Result<HashSet<String>> {
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .context("fetching loader game versions")?
+            .error_for_status()
+            .context("loader game metadata error")?;
+        let games: Vec<GameVersion> = crate::http::json_capped(resp, "loader game versions")?;
+        Ok(games.into_iter().map(|g| g.version).collect())
+    }
+
+    /// Minecraft versions NeoForge supports: its modern line (1.20.2+, one `X.Y.*` series per MC
+    /// under the `neoforge` artifact) plus 1.20.1, whose builds predate that scheme and live under
+    /// the legacy `forge` artifact.
+    fn neoforge_minecraft_versions(&self) -> Result<HashSet<String>> {
+        let mut set: HashSet<String> = self
+            .neoforge_maven()?
+            .iter()
+            .filter_map(|v| neoforge_version_to_mc(v))
+            .collect();
+        if self
+            .neoforge_forge_maven()?
+            .iter()
+            .any(|v| v.starts_with("1.20.1-"))
+        {
+            set.insert("1.20.1".to_string());
+        }
+        Ok(set)
+    }
+
     /// Loader versions applicable to `mc`, best (newest/recommended) first.
     pub fn loader(&self, loader: Loader, mc: &str) -> Result<Vec<LoaderVersion>> {
         match loader {
@@ -66,6 +122,11 @@ impl Versions {
     /// Forge publishes only the latest + recommended build per Minecraft version in its promotions
     /// feed; that pair is what the picker offers.
     fn forge(&self, mc: &str) -> Result<Vec<LoaderVersion>> {
+        Ok(select_forge_versions(&self.forge_promos()?, mc))
+    }
+
+    /// Forge's promotions feed: `<mc>-latest` / `<mc>-recommended` mapped to a build.
+    fn forge_promos(&self) -> Result<HashMap<String, String>> {
         #[derive(Deserialize)]
         struct Promotions {
             promos: HashMap<String, String>,
@@ -78,24 +139,53 @@ impl Versions {
             .error_for_status()
             .context("Forge promotions error")?;
         let promos: Promotions = crate::http::json_capped(resp, "Forge promotions")?;
-        Ok(select_forge_versions(&promos.promos, mc))
+        Ok(promos.promos)
     }
 
-    /// NeoForge versions encode the Minecraft version: MC `1.X.Y` maps to NeoForge `X.Y.*`.
+    /// NeoForge versions for `mc`. The modern line (1.20.2+) encodes the Minecraft version in its
+    /// own `X.Y.*` numbering under the `neoforge` artifact; 1.20.1 predates that scheme and lives
+    /// under the legacy `forge` artifact as `1.20.1-47.*`.
     fn neoforge(&self, mc: &str) -> Result<Vec<LoaderVersion>> {
+        if mc == "1.20.1" {
+            Ok(select_neoforge_legacy_versions(
+                self.neoforge_forge_maven()?,
+            ))
+        } else {
+            Ok(select_neoforge_versions(self.neoforge_maven()?, mc))
+        }
+    }
+
+    /// The modern NeoForge release list (`net/neoforged/neoforge`), maven ascending.
+    fn neoforge_maven(&self) -> Result<Vec<String>> {
+        self.maven_versions(
+            "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge",
+            "NeoForge versions",
+        )
+    }
+
+    /// The legacy NeoForge release list (`net/neoforged/forge`) that carries the 1.20.1 line.
+    fn neoforge_forge_maven(&self) -> Result<Vec<String>> {
+        self.maven_versions(
+            "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/forge",
+            "NeoForge 1.20.1 versions",
+        )
+    }
+
+    /// A NeoForge maven `versions` listing (both artifacts share this shape).
+    fn maven_versions(&self, url: &str, what: &str) -> Result<Vec<String>> {
         #[derive(Deserialize)]
         struct Releases {
             versions: Vec<String>,
         }
         let resp = self
             .client
-            .get("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge")
+            .get(url)
             .send()
-            .context("fetching NeoForge versions")?
+            .with_context(|| format!("fetching {what}"))?
             .error_for_status()
             .context("NeoForge maven error")?;
-        let releases: Releases = crate::http::json_capped(resp, "NeoForge versions")?;
-        Ok(select_neoforge_versions(releases.versions, mc))
+        let releases: Releases = crate::http::json_capped(resp, what)?;
+        Ok(releases.versions)
     }
 }
 
@@ -113,6 +203,12 @@ struct Build {
     version: String,
     #[serde(default)]
     stable: bool,
+}
+
+/// A Fabric/Quilt supported Minecraft game version (from each service's `/versions/game` feed).
+#[derive(Deserialize)]
+struct GameVersion {
+    version: String,
 }
 
 /// Keep only release tags, newest publish-date first.
@@ -179,6 +275,56 @@ fn neoforge_prefix(mc: &str) -> String {
     let major = parts.get(1).copied().unwrap_or("0");
     let minor = parts.get(2).copied().unwrap_or("0");
     format!("{major}.{minor}.")
+}
+
+/// The Minecraft versions present in Forge's promotions feed (the `<mc>` part of each key).
+fn forge_minecraft_versions(promos: &HashMap<String, String>) -> HashSet<String> {
+    promos
+        .keys()
+        .filter_map(|k| {
+            k.strip_suffix("-latest")
+                .or_else(|| k.strip_suffix("-recommended"))
+        })
+        .map(|mc| mc.to_string())
+        .collect()
+}
+
+/// Map a modern NeoForge version `X.Y.Z` back to its Minecraft version: `1.X.Y`, or `1.X` when the
+/// minor is 0 (e.g. `21.0.169` -> `1.21`, `20.4.190` -> `1.20.4`). Inputs that aren't `X.Y.Z` (a
+/// missing patch, non-numeric parts) yield `None`, so partial or malformed tags are ignored.
+fn neoforge_version_to_mc(version: &str) -> Option<String> {
+    // Exactly three dot-separated components: `X.Y.Z` (the patch may carry a `-beta`/`-rc` suffix,
+    // which keeps its dot count at three). This rejects both too-short strings (`47.1`) and the
+    // legacy hyphenated 1.20.1 form (`1.20.1-47.1.106`, five components) that belongs to the other
+    // artifact.
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let major: u32 = parts[0].parse().ok()?;
+    let minor: u32 = parts[1].parse().ok()?;
+    Some(if minor == 0 {
+        format!("1.{major}")
+    } else {
+        format!("1.{major}.{minor}")
+    })
+}
+
+/// Keep the 1.20.1 builds from the legacy `forge` artifact, newest first. Maven returns ascending,
+/// so the kept subset is reversed for the picker.
+fn select_neoforge_legacy_versions(versions: Vec<String>) -> Vec<LoaderVersion> {
+    let mut matching: Vec<String> = versions
+        .into_iter()
+        .filter(|v| v.starts_with("1.20.1-"))
+        .collect();
+    matching.reverse();
+    matching
+        .into_iter()
+        .map(|version| LoaderVersion {
+            version,
+            note: None,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -431,6 +577,72 @@ mod tests {
         assert!(
             out.is_empty(),
             "no build under the 20.1. prefix means nothing is offered"
+        );
+    }
+
+    // --- forge_minecraft_versions ----------------------------------------------------------
+
+    #[test]
+    fn forge_minecraft_versions_extracts_unique_mc_from_promo_keys() {
+        let p = promos(&[
+            ("1.20.1-latest", "47.3.0"),
+            ("1.20.1-recommended", "47.2.0"),
+            ("1.19.2-latest", "43.4.0"),
+        ]);
+
+        let out = forge_minecraft_versions(&p);
+
+        assert_eq!(
+            out,
+            HashSet::from(["1.20.1".to_string(), "1.19.2".to_string()]),
+            "latest+recommended of one MC must collapse to a single MC entry"
+        );
+    }
+
+    // --- neoforge_version_to_mc ------------------------------------------------------------
+
+    #[test]
+    fn neoforge_version_to_mc_maps_the_modern_line() {
+        assert_eq!(
+            neoforge_version_to_mc("20.4.190").as_deref(),
+            Some("1.20.4")
+        );
+        assert_eq!(
+            neoforge_version_to_mc("21.0.169").as_deref(),
+            Some("1.21"),
+            "a zero minor must drop the patch: 21.0.x is Minecraft 1.21, not 1.21.0"
+        );
+        assert_eq!(
+            neoforge_version_to_mc("21.1.100").as_deref(),
+            Some("1.21.1")
+        );
+    }
+
+    #[test]
+    fn neoforge_version_to_mc_rejects_non_xyz_inputs() {
+        // Missing patch (the 1.20.1 legacy string) or non-numeric parts must not map here.
+        assert_eq!(neoforge_version_to_mc("47.1"), None);
+        assert_eq!(neoforge_version_to_mc("1.20.1-47.1.106"), None);
+        assert_eq!(neoforge_version_to_mc("beta.1.0"), None);
+    }
+
+    // --- select_neoforge_legacy_versions ---------------------------------------------------
+
+    #[test]
+    fn select_neoforge_legacy_keeps_1_20_1_builds_newest_first() {
+        let versions = vec![
+            "1.20.1-47.1.5".to_string(),
+            "1.20.1-47.1.106".to_string(),
+            "20.2.0".to_string(),
+        ];
+
+        let out = select_neoforge_legacy_versions(versions);
+
+        let picked: Vec<&str> = out.iter().map(|v| v.version.as_str()).collect();
+        assert_eq!(
+            picked,
+            vec!["1.20.1-47.1.106", "1.20.1-47.1.5"],
+            "only 1.20.1- builds survive, reversed from maven-ascending to newest-first"
         );
     }
 

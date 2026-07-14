@@ -21,7 +21,7 @@
 
 ---
 
-Think **npm, but for Minecraft mods**. You keep a small, human-readable manifest (`lode.jsonc`); `lode` figures
+Think **npm, but for Minecraft mods**. You keep a small, human-readable manifest (`lode.json`); `lode` figures
 out exact versions and dependencies, records them in a lockfile (`lode.lock`), and downloads the jars straight
 into your instance — from **Modrinth** and **CurseForge**. No clone-and-build, no separate installer.
 
@@ -34,7 +34,7 @@ lode get github.com/you/pack     # or fetch someone's published pack — checksu
 
 ## ✨ Features
 
-- 📄 **One manifest, one lockfile** — you edit `lode.jsonc`; `lode` generates `lode.lock`. Same result on every machine, exactly like `package.json` + `package-lock.json`.
+- 📄 **One manifest, one lockfile** — you edit `lode.json`; `lode` generates `lode.lock`. Same result on every machine, exactly like `package.json` + `package-lock.json`.
 - 🔗 **Real dependency resolution** — add a mod and its required deps come with it, deduplicated across the pack. `lode why <mod>` traces anything back to whatever pulled it in.
 - 🔒 **Locked by hash** — every jar is pinned to its checksum; `lode verify` re-hashes an install and tells you if anything drifted or was tampered with.
 - 🌐 **Modrinth and CurseForge in one pack** — pull from either platform freely; you're never tied to a single source.

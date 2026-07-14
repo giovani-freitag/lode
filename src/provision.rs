@@ -52,7 +52,11 @@ impl LoaderProvisioner {
     fn already_provisioned(&self, loader: Loader, dir: &Path) -> bool {
         match loader {
             Loader::Forge => dir.join("libraries/net/minecraftforge/forge").is_dir(),
-            Loader::Neoforge => dir.join("libraries/net/neoforged/neoforge").is_dir(),
+            Loader::Neoforge => {
+                // 1.20.1 installs under the legacy `forge` artifact path, 1.20.2+ under `neoforge`.
+                dir.join("libraries/net/neoforged/neoforge").is_dir()
+                    || dir.join("libraries/net/neoforged/forge").is_dir()
+            }
             Loader::Fabric => dir.join("fabric-server-launch.jar").is_file(),
             Loader::Quilt => dir.join("quilt-server-launch.jar").is_file(),
         }
@@ -212,7 +216,13 @@ fn forge_installer_url(mc: &str, version: &str) -> String {
 }
 
 fn neoforge_installer_url(version: &str) -> String {
-    format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar")
+    // 1.20.1 predates NeoForge's own versioning; its installer lives under the legacy `forge`
+    // artifact as `forge-1.20.1-47.x-installer.jar`, whereas 1.20.2+ use the `neoforge` artifact.
+    if version.starts_with("1.20.1-") {
+        format!("https://maven.neoforged.net/releases/net/neoforged/forge/{version}/forge-{version}-installer.jar")
+    } else {
+        format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar")
+    }
 }
 
 fn fabric_server_url(mc: &str, loader: &str, installer: &str) -> String {
@@ -250,6 +260,16 @@ mod tests {
             url,
             "https://maven.neoforged.net/releases/net/neoforged/neoforge/20.4.190/neoforge-20.4.190-installer.jar",
             "neoforge URL must interpolate the version into both the directory and the jar file name"
+        );
+    }
+
+    #[test]
+    fn neoforge_installer_url_routes_1_20_1_to_the_legacy_forge_artifact() {
+        let url = neoforge_installer_url("1.20.1-47.1.106");
+        assert_eq!(
+            url,
+            "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar",
+            "a hyphenated 1.20.1 version must resolve to the legacy forge artifact and forge- jar prefix"
         );
     }
 
