@@ -15,7 +15,7 @@ Set Margin 16
 Set MarginFill "#0A0A0A"
 Set BorderRadius 10
 Set WindowBar Colorful
-Set TypingSpeed 60ms
+Set TypingSpeed 110ms
 
 # lode palette: VS Code Dark+ base + the icon's amber accent (#FBBE3C -> #D97706).
 Set Theme { "name": "lode", "background": "#1E1E1E", "foreground": "#D4D4D4", "cursor": "#FBBE3C", "selection": "#264F78", "black": "#1E1E1E", "red": "#F14C4C", "green": "#23D18B", "yellow": "#FBBE3C", "blue": "#3B8EEA", "magenta": "#D670D6", "cyan": "#29B8DB", "white": "#D4D4D4", "brightBlack": "#808080", "brightRed": "#F14C4C", "brightGreen": "#23D18B", "brightYellow": "#D97706", "brightBlue": "#3B8EEA", "brightMagenta": "#D670D6", "brightCyan": "#29B8DB", "brightWhite": "#FFFFFF" }
