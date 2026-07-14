@@ -25,33 +25,29 @@
 
 ---
 
-Think **npm, but for Minecraft mods**. You keep a small, human-readable manifest (`lode.json`); `lode` figures
-out exact versions and dependencies, records them in a lockfile (`lode.lock`), and downloads the jars straight
-into your instance — from **Modrinth** and **CurseForge**. No clone-and-build, no separate installer.
+Think **npm, but for Minecraft mods** — one reproducible pack from **Modrinth** and **CurseForge**, with no clone-and-build and no separate installer.
 
 ```sh
-lode init                        # scaffold a pack — pick the loader + Minecraft version
-lode add create                  # add a mod: resolve its deps, download the jars
-lode install --server            # set up an instance from the lockfile (and provision the server)
-lode get github.com/you/pack     # or fetch someone's published pack — checksum verified (add --verify for signature)
+lode init                        # scaffold a pack (loader + Minecraft version)
+lode add create                  # add a mod, with its dependencies
+lode install --server            # set up a server from the lockfile
+lode get github.com/you/pack     # fetch someone's published pack, verified
 ```
 
 ## ✨ Features
 
-- 📄 **One manifest, one lockfile** — you edit `lode.json`; `lode` generates `lode.lock`. Same result on every machine, exactly like `package.json` + `package-lock.json`.
-- 🔗 **Real dependency resolution** — add a mod and its required deps come with it, deduplicated across the pack. `lode why <mod>` traces anything back to whatever pulled it in.
-- 🔒 **Locked by hash** — every jar is pinned to its checksum; `lode verify` re-hashes an install and tells you if anything drifted or was tampered with.
-- 🌐 **Modrinth and CurseForge in one pack** — pull from either platform freely; you're never tied to a single source.
-- 📦 **Installs the loader, not just the mods** — `lode install --server` provisions the server and installs the server-side mods, no separate installer.
-- ✍️ **Signed, verifiable releases** — `lode publish --sign` ships a signed GitHub release; `lode get … --verify` proves it came from your repo. Verification is native; signing uses cosign.
-- 🔁 **packwiz bridge** — `lode import packwiz .` converts an existing pack in one step, and `lode export packwiz` bridges back out.
+- 📄 **One manifest, one lockfile** — the same pack, reproducible on every machine.
+- 🔗 **Real dependency resolution** — a mod's deps come along, deduplicated; `lode why <mod>` shows what pulled anything in.
+- 🔒 **Locked by hash** — every jar pinned to its checksum; `lode verify` catches drift or tampering.
+- 🌐 **Modrinth and CurseForge in one pack** — mix both freely, no lock-in.
+- 📦 **Installs the loader, not just the mods** — `lode install --server` brings up a ready-to-run server.
+- ✍️ **Signed, verifiable releases** — `lode get --verify` proves a pack came from you.
+- 🔁 **packwiz bridge** — bring a packwiz pack in with `import`, or `export` back out.
 
 ## 📦 Requirements
 
-- A **JDK** to *run* the server, matched to the Minecraft version — **Java 17** for 1.20.x, **21** for 1.21+
-  (`lode` provisions the loader, not Java). Pass `--java <path>` to choose one, or install
-  [Adoptium Temurin](https://adoptium.net).
-- A **CurseForge API key** only if you pull CurseForge mods — Modrinth works out of the box.
+- **Java** — only to set up a server (`install --server`). `lode` finds it via `JAVA_HOME`/`PATH`; pass `--java <path>` to override. JDK 17 for 1.20.x, 21 for 1.21+ ([Temurin](https://adoptium.net)).
+- **CurseForge API key** — only for CurseForge mods. Modrinth works out of the box.
 
 ## 🚀 Install
 
@@ -62,7 +58,7 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/giovani-freitag/lode/re
 # Windows (PowerShell)
 powershell -c "irm https://github.com/giovani-freitag/lode/releases/latest/download/lode-installer.ps1 | iex"
 
-# Rust users — prebuilt binary, no compile (lode isn't on crates.io, so scope it to the repo)
+# Rust users — prebuilt binary, no compile
 cargo binstall --git https://github.com/giovani-freitag/lode lode
 ```
 
@@ -76,8 +72,6 @@ scoop bucket add lode https://github.com/giovani-freitag/scoop-lode; scoop insta
 Prefer clicking? Grab the **`.msi`** (Windows) or the tarball for your platform from the
 [Releases page](https://github.com/giovani-freitag/lode/releases). From source:
 `cargo install --git https://github.com/giovani-freitag/lode`.
-
-Maintainer? How releases are cut lives in [docs/releasing.md](docs/releasing.md).
 
 ## 📖 Quick tour
 
@@ -99,9 +93,7 @@ lode publish --sign --tag v1.0.0   # you
 lode get github.com/you/pack --verify   # them
 ```
 
-The published bundle is **thin** — manifest, lockfile, and your config/script overlays, but no jars. Those are
-pulled from the provider on install and checked against the lockfile, so distribution stays within each mod's
-redistribution rules and every install is byte-verified. Details in [docs/signing.md](docs/signing.md).
+The published bundle is **thin** — manifest, lockfile, and overlays, no jars — so sharing stays within each mod's redistribution rules. Details in [docs/signing.md](docs/signing.md).
 
 ## 🧭 Commands
 
@@ -121,5 +113,6 @@ Full reference, every flag → **[docs/commands.md](docs/commands.md)**.
 - **[Command reference](docs/commands.md)** — every command and flag.
 - **[Signing & verification](docs/signing.md)** — sign a release; `lode get --verify`.
 - **[Roadmap](docs/roadmap.md)** — what's done and what's next.
+- **[Releasing](docs/releasing.md)** — how releases are cut (maintainers).
 
 MIT licensed.
