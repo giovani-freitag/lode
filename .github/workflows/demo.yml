@@ -1,10 +1,15 @@
 name: Demo GIF
 
-# Renders demo.tape into assets/demo.gif and opens a PR with the result. Manual — run it after
-# changing the CLI's output or demo.tape. Runs on Linux because VHS needs ttyd + ffmpeg, which
-# don't run on Windows. (Standard VHS-in-CI pattern.)
+# Renders demo.tape into assets/demo.gif. Manual — run after changing the CLI's output or the tape.
+# By default it only uploads the GIF as an artifact for review; pass publish=true to also commit it
+# to main. Runs on Linux because VHS needs ttyd + ffmpeg (not available on Windows).
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Commit the rendered GIF to main (default: preview only, uploaded as an artifact)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,7 +39,13 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Render demo.tape
         run: vhs demo.tape
+      - name: Upload the GIF for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-gif
+          path: assets/demo.gif
       - name: Commit the regenerated GIF
+        if: ${{ inputs.publish }}
         run: |
           git add assets/demo.gif
           if git diff --cached --quiet; then
