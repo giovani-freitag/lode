@@ -1,6 +1,6 @@
 [package]
 name = "lode"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Giovani Freitag"]
 edition = "2021"
 description = "A package manager for Minecraft modpacks — centralized manifest, real dependency resolution, prebuilt binaries."
